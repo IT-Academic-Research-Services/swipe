@@ -32,9 +32,11 @@ import os
 import json
 import logging
 
-from sfn_io_helper import batch_events, reporting, stage_io
+logging.basicConfig(
+    level=os.environ.get('LOG_LEVEL', 'INFO').upper()
+)
 
-logging.getLogger().setLevel(logging.INFO)
+from sfn_io_helper import batch_events, reporting, stage_io
 
 
 def preprocess_input(sfn_data, _):
@@ -63,6 +65,8 @@ def process_stage_output(sfn_data, _):
 def handle_success(sfn_data, _):
     sfn_state = sfn_data["Input"]
     reporting.notify_success(sfn_state=sfn_state)
+    stage_io.delete_restricted_intermediate_files(sfn_state)
+    stage_io.delete_sample_files(sfn_state)
     return sfn_state
 
 
@@ -71,11 +75,16 @@ def handle_failure(sfn_data, _):
     sfn_state = sfn_data["Input"]
     assert sfn_data["CurrentState"] == "HandleFailure"
     reporting.notify_failure(sfn_state=sfn_state)
-    failure_type = type(sfn_state["Error"], (Exception,), dict())
+    # Clean up restricted intermediate files before propagating the failure,
+    # so cleanup runs regardless of the terminal state of the execution.
+    stage_io.delete_restricted_intermediate_files(sfn_state)
+    stage_io.delete_sample_files(sfn_state)
+    failure = sfn_state.get("Failure", sfn_state)
+    failure_type = type(failure["Error"], (Exception,), dict())
     try:
-        cause = json.loads(sfn_state["Cause"])["errorMessage"]
+        cause = json.loads(failure["Cause"])["errorMessage"]
     except Exception:
-        cause = sfn_state["Cause"]
+        cause = failure["Cause"]
     raise failure_type(cause)
 
 
