@@ -204,23 +204,34 @@ def delete_restricted_intermediate_files(sfn_state):
 
     Deletion errors are logged but never raised, so that a missing file does not stop this cleanup or impact the caller.
     """
+    restricted_files_str = os.environ.get("RESTRICTED_FILES")
+    if not restricted_files_str:
+        raise ValueError("Could not load Environment Variable RESTRICTED_FILES")
 
-    restricted_regexes = {
-        re.compile(r".*bowtie2_ercc_filtered\d+\.fastq$"),
-        re.compile(r".*bowtie2_host\.bam$"),
-        re.compile(r".*bowtie2_host_filtered\d+\.fastq$"),
-        re.compile(r".*bowtie2_human_filtered\d+\.fastq$"),
-        re.compile(r".*fastp\d+\.fastq$"),
-        re.compile(r".*hisat2_host_filtered\d+\.fastq$"),
-        re.compile(r".*sample_quality_filtered\.fastq$"),
-        re.compile(r".*sample_validated\.fastq$"),
-        re.compile(r".*sample\.hostfiltered\.bam$"),
-        re.compile(r".*sample\.hostfiltered\.fastq$"),
-        re.compile(r".*sample\.humanfiltered\.bam$"),
-        re.compile(r".*sample\.humanfiltered\.fastq$"),
-        re.compile(r".*valid_input\d+\.fastq$"),
-        re.compile(r".*validated_\d+\.fastq\.gz$"),
-    }
+    restricted_files_str = restricted_files_str.strip()
+    if not restricted_files_str:
+        raise ValueError("Environment Variable RESTRICTED_FILES is blank")
+
+    try:
+        restricted_files = json.loads(restricted_files_str)
+    except ValueError as e:
+        raise ValueError(f"Environment Variable RESTRICTED_FILES not valid JSON: [{restricted_files_str}] -> {e}")
+
+    if not isinstance(restricted_files, list):
+        raise ValueError(
+            f"Environment Variable RESTRICTED_FILES not a list: "
+            f"[{type(restricted_files).__name__}] {restricted_files}"
+        )
+
+    restricted_regexes = []
+    for regex_str in restricted_files:
+        if not isinstance(regex_str, str):
+            raise ValueError(f"Restricted file Regular Expression is not a string: [{type(regex_str).__name__}] {regex_str}")
+        try:
+            regex = re.compile(regex_str)
+        except re.error as e:
+            raise ValueError(f"Restricted file Regular Expression is invalid: [{regex_str}] -> {e}")
+        restricted_regexes.append(regex)
 
     output_path = get_output_path(sfn_state)
     bucket_name, prefix = output_path.split("/", 3)[2:]
@@ -248,10 +259,21 @@ def delete_restricted_intermediate_files(sfn_state):
 
     if objects_to_delete:
         logger.info("Deleting restricted intermediate files: %s", json.dumps(objects_to_delete))
-        try:
-            s3.Bucket(bucket_name).delete_objects(Delete={"Objects": objects_to_delete})
-        except Exception as e:
-            logger.warning("Error deleting restricted intermediate files: %s", e)
+        bucket = s3.Bucket(bucket_name)
+        for batch_start in range(0, len(objects_to_delete), 1000):
+            object_batch = objects_to_delete[batch_start:batch_start + 1000]
+            try:
+                response = bucket.delete_objects(Delete={"Objects": object_batch})
+                for error in response.get("Errors", []):
+                    logger.warning(
+                        "Error deleting restricted intermediate file s3://%s/%s: [%s] %s",
+                        bucket_name,
+                        error.get("Key"),
+                        error.get("Code"),
+                        error.get("Message"),
+                    )
+            except Exception as e:
+                logger.warning("Error deleting restricted intermediate files: %s", e)
     else:
         logger.info("No restricted intermediate files to delete")
 
