@@ -40,7 +40,7 @@ resource "aws_s3_bucket" "wdls" {
 }
 
 module "swipe" {
-    source = "github.com/IT-Academic-Research-Services/swipe?ref=v1.5.1"
+    source = "github.com/IT-Academic-Research-Services/swipe?ref=v1.5.2"
 
     app_name               = "my-test-app"
     workspace_s3_prefixes  = [aws_s3_bucket.workspace.bucket]
