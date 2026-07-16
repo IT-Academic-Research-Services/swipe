@@ -57,6 +57,7 @@ module "sfn_io_helper" {
   batch_queue_arns            = [var.batch_spot_job_queue_arn, var.batch_on_demand_job_queue_arn]
   workspace_s3_prefixes       = var.workspace_s3_prefixes
   wdl_workflow_s3_prefix      = var.wdl_workflow_s3_prefix
+  restricted_files            = var.restricted_files
   stage_memory_defaults       = var.stage_memory_defaults
   stage_vcpu_defaults         = var.stage_vcpu_defaults
   schedule_expression         = var.metrics_schedule

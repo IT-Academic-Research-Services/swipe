@@ -200,3 +200,9 @@ variable "step_notifications" {
   type        = bool
   default     = false
 }
+
+variable "restricted_files" {
+  type        = list(string)
+  description = "List of Strict (fullmatch) Regular Expressions that identify intermediate files to be deleted at the end of a Step Function"
+  nullable    = true
+}
