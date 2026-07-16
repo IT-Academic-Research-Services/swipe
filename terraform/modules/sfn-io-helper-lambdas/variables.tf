@@ -74,3 +74,29 @@ variable "sfn_notification_queue_urls" {
   description = "URLs of notification SQS queues"
   type        = list(string)
 }
+
+variable "restricted_files" {
+  type        = list(string)
+  description = "List of Strict (fullmatch) Regular Expressions that identify intermediate files to be deleted at the end of a Step Function"
+  nullable    = false
+  default = [
+    ".*bowtie2_ercc_filtered\\d+\\.fastq$",
+    ".*bowtie2_host\\.bam$",
+    ".*bowtie2_host_filtered\\d+\\.fastq$",
+    ".*bowtie2_human_filtered\\d+\\.fastq$",
+    # ".*dedup\\d+\\.fastq$",
+    ".*fastp\\d+\\.fastq$",
+    ".*hisat2_host_filtered\\d+\\.fastq$",
+    # ".*hisat2_human_filtered\\d+\\.fastq$",
+    ".*sample_quality_filtered\\.fastq$",
+    ".*sample_validated\\.fastq$",
+    ".*sample\\.hostfiltered\\.bam$",
+    ".*sample\\.hostfiltered\\.fastq$",
+    ".*sample\\.humanfiltered\\.bam$",
+    # ".*sample\\.humanfiltered\\.fastq$",
+    # ".*transcript_to_gene_mapping.kallisto\\.tsv$",
+    ".*valid_input\\d+\\.fastq$",
+    # ".*validate_input_summary\\.json$",
+    ".*validated_\\d+\\.fastq\\.gz$",
+  ]
+}

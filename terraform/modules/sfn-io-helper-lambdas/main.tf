@@ -52,6 +52,8 @@ resource "aws_iam_role_policy" "iam_role_policy" {
       {
         Effect : "Allow",
         Action : [
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion",
           "s3:List*",
           "s3:GetObject*",
           "s3:PutObject*"
@@ -137,6 +139,7 @@ resource "aws_lambda_function" "lambda" {
     variables = merge({
       APP_NAME         = var.app_name
       AWS_ENDPOINT_URL = var.aws_endpoint_url
+      RESTRICTED_FILES = jsonencode(var.restricted_files)
       SQS_QUEUE_URLS   = join(",", var.sfn_notification_queue_urls)
       }, {
       for stage, defaults in var.stage_memory_defaults : "${stage}SPOTMemoryDefault" => "${defaults.spot}"

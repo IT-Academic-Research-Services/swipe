@@ -111,6 +111,7 @@ module "sfn" {
   stage_memory_defaults         = var.stage_memory_defaults
   stage_vcpu_defaults           = var.stage_vcpu_defaults
   extra_env_vars                = var.extra_env_vars
+  restricted_files              = var.restricted_files
   sqs_queues                    = var.sqs_queues
   step_notifications            = var.step_notifications
   call_cache                    = var.call_cache
