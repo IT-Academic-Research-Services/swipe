@@ -281,30 +281,30 @@ def delete_restricted_intermediate_files(sfn_state):
         logger.info("No restricted intermediate files to delete")
 
 
-def delete_sample_files(sfn_state):
-    """
-    Delete all files listed in the workflow's S3 sample directory.
-
-    Deletion errors are logged but never raised so that a missing file does not impact the caller.
-    """
-
-    output_s3_uri = sfn_state["OutputPrefix"]
-    assert output_s3_uri.startswith("s3://")
-
-    # Remove the last part of the s3_uri and replace it with "fastqs/", including a terminating backslash
-    # IE: s3://idseq-samples/samples/1/19/11 -> bucket=idseq-samples prefix=samples/1/19/fastqs/
-    s3_uri_as_array = output_s3_uri.rstrip("/").split("/")[2:]
-    bucket_name = s3_uri_as_array[0]
-    prefix = "/".join([
-        *s3_uri_as_array[1:-1],
-        "fastqs",
-        ""
-    ])
-    s3_uri = f"s3://{bucket_name}/{prefix}"
-
-    logger.info("Deleting all files in %s (bucket=%s prefix=%s)", s3_uri, bucket_name, prefix)
-    try:
-        responses = s3.Bucket(bucket_name).objects.filter(Prefix=prefix).delete()
-        logger.info("Deleted sample files: %s", json.dumps(responses))
-    except Exception as e:
-        logger.warning("Unexpected error deleting sample files in %s -> %s", s3_uri, e)
+# def delete_sample_files(sfn_state):
+#     """
+#     Delete all files listed in the workflow's S3 sample directory.
+#
+#     Deletion errors are logged but never raised so that a missing file does not impact the caller.
+#     """
+#
+#     output_s3_uri = sfn_state["OutputPrefix"]
+#     assert output_s3_uri.startswith("s3://")
+#
+#     # Remove the last part of the s3_uri and replace it with "fastqs/", including a terminating backslash
+#     # IE: s3://idseq-samples/samples/1/19/11 -> bucket=idseq-samples prefix=samples/1/19/fastqs/
+#     s3_uri_as_array = output_s3_uri.rstrip("/").split("/")[2:]
+#     bucket_name = s3_uri_as_array[0]
+#     prefix = "/".join([
+#         *s3_uri_as_array[1:-1],
+#         "fastqs",
+#         ""
+#     ])
+#     s3_uri = f"s3://{bucket_name}/{prefix}"
+#
+#     logger.info("Deleting all files in %s (bucket=%s prefix=%s)", s3_uri, bucket_name, prefix)
+#     try:
+#         responses = s3.Bucket(bucket_name).objects.filter(Prefix=prefix).delete()
+#         logger.info("Deleted sample files: %s", json.dumps(responses))
+#     except Exception as e:
+#         logger.warning("Unexpected error deleting sample files in %s -> %s", s3_uri, e)
