@@ -9,6 +9,7 @@ locals {
   lambda_names = toset([
     "preprocess_input",
     "process_stage_output",
+    "merge_parallel_outputs",
     "handle_success",
     "handle_failure",
     "process_batch_event",

@@ -77,14 +77,15 @@ resource "aws_sfn_state_machine" "swipe_single_wdl" {
   name     = "${var.app_name}-${each.key}-wdl"
   role_arn = aws_iam_role.swipe_sfn_service.arn
   definition = jsonencode(yamldecode(templatefile(each.value.path, merge({
-    batch_spot_job_queue_arn         = var.batch_spot_job_queue_arn,
-    batch_on_demand_job_queue_arn    = var.batch_on_demand_job_queue_arn,
-    batch_job_definition_name        = module.batch_job.batch_job_definition_name,
-    batch_job_timeout_seconds        = var.batch_job_timeout_seconds,
-    preprocess_input_lambda_name     = module.sfn_io_helper.preprocess_input_lambda_name,
-    process_stage_output_lambda_name = module.sfn_io_helper.process_stage_output_lambda_name,
-    handle_success_lambda_name       = module.sfn_io_helper.handle_success_lambda_name,
-    handle_failure_lambda_name       = module.sfn_io_helper.handle_failure_lambda_name,
+    batch_spot_job_queue_arn           = var.batch_spot_job_queue_arn,
+    batch_on_demand_job_queue_arn      = var.batch_on_demand_job_queue_arn,
+    batch_job_definition_name          = module.batch_job.batch_job_definition_name,
+    batch_job_timeout_seconds          = var.batch_job_timeout_seconds,
+    preprocess_input_lambda_name       = module.sfn_io_helper.preprocess_input_lambda_name,
+    process_stage_output_lambda_name   = module.sfn_io_helper.process_stage_output_lambda_name,
+    merge_parallel_outputs_lambda_name = module.sfn_io_helper.merge_parallel_outputs_lambda_name,
+    handle_success_lambda_name         = module.sfn_io_helper.handle_success_lambda_name,
+    handle_failure_lambda_name         = module.sfn_io_helper.handle_failure_lambda_name,
   }, each.value.extra_template_vars))))
   tags = var.tags
 }

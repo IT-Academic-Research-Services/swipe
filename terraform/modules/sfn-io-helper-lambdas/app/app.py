@@ -60,6 +60,16 @@ def process_stage_output(sfn_data, _):
     return sfn_state
 
 
+def merge_parallel_outputs(sfn_data, _):
+    # Additive helper for fan-out state machines that run stages inside an SFN `Parallel`
+    # state. `Parallel` emits an array of per-branch states, each of which accumulated only
+    # its own outputs into its Result. This unions those branch states back into one and then
+    # runs the standard link_outputs, so downstream (post-join) stages resolve their inputs
+    # from the whole run's Result exactly as in a linear pipeline. Linear state machines never
+    # invoke this state, so their behaviour is unchanged.
+    return stage_io.merge_parallel_outputs(sfn_state=sfn_data["Input"])
+
+
 def handle_success(sfn_data, _):
     sfn_state = sfn_data["Input"]
     reporting.notify_success(sfn_state=sfn_state)

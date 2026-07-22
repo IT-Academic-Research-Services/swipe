@@ -132,6 +132,36 @@ def link_outputs(sfn_state):
         put_stage_input(sfn_state=sfn_state, stage=stage, stage_input=stage_input)
 
 
+def merge_parallel_outputs(sfn_state):
+    """Union the branch states an SFN ``Parallel`` state emits, then link_outputs on the whole.
+
+    A ``Parallel`` state runs each branch on an isolated copy of the state, so each branch's
+    ``Result`` only holds the outputs of the stages IN that branch. When the branches join,
+    SFN hands back an array of those per-branch states. This unions their ``Result`` (and
+    ``BatchJobDetails``) into a single state -- restoring the whole run's accumulated ``Result``
+    the way a linear pipeline would have it -- and then runs the ordinary ``link_outputs`` so
+    the post-join stages resolve their inputs from every branch's outputs, cross-branch
+    included. All the shared keys (``*_INPUT_URI``/``*_OUTPUT_URI``, ``STAGES_IO_MAP_JSON``,
+    ``OutputPrefix``, memory) are identical across branches (set once by ``preprocess``), so the
+    first branch is taken as the base.
+
+    Expects ``sfn_state = {"Branches": [<branch state>, ...]}`` and returns the merged state.
+    This is only reached by state machines that use a ``Parallel`` + merge state; linear ones
+    never call it, so their behaviour is unchanged.
+    """
+    branches = sfn_state["Branches"]
+    merged = dict(branches[0])
+    merged_result = {}
+    merged_batch_details = {}
+    for branch in branches:
+        merged_result.update(branch.get("Result", {}))
+        merged_batch_details.update(branch.get("BatchJobDetails", {}))
+    merged["Result"] = merged_result
+    merged["BatchJobDetails"] = merged_batch_details
+    link_outputs(merged)
+    return merged
+
+
 def preprocess_sfn_input(sfn_state, aws_region, aws_account_id, state_machine_name):
     # TODO: add input validation assertions here (use JSON schema?)
     output_path = get_output_s3_uri(sfn_state)
