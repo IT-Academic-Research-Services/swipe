@@ -78,6 +78,32 @@ def handle_success(sfn_data, _):
     return sfn_state
 
 
+def find_failure(sfn_state):
+    """Locate the {"Error", "Cause"} pair describing why the execution failed.
+
+    A Catch writes that pair to whatever its ResultPath points at, so where it lands depends on how
+    the state machine is wired. Linear pipelines put it at the top level (or under "Failure"), but
+    fan-out pipelines scope it per state, e.g. the index-generation machine catches with
+    ResultPath "$.BatchJobError.<StateName>" for every task and Parallel state. In that shape there
+    is no top-level "Error" at all, so reading it directly raised KeyError inside this handler and
+    masked the real failure behind an unrelated stack trace. Prefer the most specific error we can
+    find, and never raise while trying to report a failure.
+
+    Returns a (error, cause) tuple; error is always a string, cause may be None.
+    """
+    for candidate in (sfn_state.get("Failure"), sfn_state):
+        if isinstance(candidate, dict) and "Error" in candidate:
+            return str(candidate["Error"]), candidate.get("Cause")
+    # Fan-out shape: the per-state entries are written innermost-first, so the earliest entry
+    # carrying an Error is the originating task rather than the Parallel state that re-raised it.
+    batch_job_error = sfn_state.get("BatchJobError")
+    if isinstance(batch_job_error, dict):
+        for candidate in batch_job_error.values():
+            if isinstance(candidate, dict) and "Error" in candidate:
+                return str(candidate["Error"]), candidate.get("Cause")
+    return "UnknownError", json.dumps(sfn_state, default=str)
+
+
 def handle_failure(sfn_data, _):
     # This Lambda MUST raise an exception with the details of the error that caused the failure.
     sfn_state = sfn_data["Input"]
@@ -87,12 +113,12 @@ def handle_failure(sfn_data, _):
     # so cleanup runs regardless of the terminal state of the execution.
     stage_io.delete_restricted_intermediate_files(sfn_state)
     # stage_io.delete_sample_files(sfn_state)
-    failure = sfn_state.get("Failure", sfn_state)
-    failure_type = type(failure["Error"], (Exception,), dict())
+    error, cause = find_failure(sfn_state)
+    failure_type = type(error, (Exception,), dict())
     try:
-        cause = json.loads(failure["Cause"])["errorMessage"]
+        cause = json.loads(cause)["errorMessage"]
     except Exception:
-        cause = failure["Cause"]
+        pass
     raise failure_type(cause)
 
 
