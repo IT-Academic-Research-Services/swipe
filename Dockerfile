@@ -2,6 +2,19 @@ FROM ubuntu:20.04
 ARG DEBIAN_FRONTEND=noninteractive
 # currently, there is an issue in v1.5.3 so we can't upgrade until it is resolved https://github.com/chanzuckerberg/miniwdl/issues/607
 ARG MINIWDL_VERSION=1.5.2
+# TARGETARCH is auto-populated by BuildKit (amd64 | arm64). Redeclaring it here brings it into
+# build-stage scope so the arch-specific binary downloads below (s3parcp,
+# docker-credential-ecr-login) resolve per-platform -- which is what lets a single multi-arch
+# image run on Graviton (arm64) hosts as well as x86_64. (CZID-776 / CZID-777)
+#
+# MUST be redeclared with NO default value. Writing `ARG TARGETARCH=amd64` does not "provide a
+# fallback" -- the explicit default SHADOWS the value BuildKit injects, so every platform of a
+# multi-arch build silently downloads the amd64 binaries. The result passes every cheap check:
+# the manifest list, the child manifest platform, the config blob architecture and `uname -m`
+# all correctly say arm64, because only these two vendored binaries are wrong. It fails at
+# runtime with `exec format error`. Verified empirically: with a default, TARGETARCH expands to
+# amd64 on an arm64 build; without one, it expands to arm64.
+ARG TARGETARCH
 
 LABEL maintainer="IDseq Team idseq-tech@chanzuckerberg.com"
 
@@ -48,7 +61,7 @@ RUN pip3 install importlib-metadata==4.13.0
 RUN pip3 install miniwdl==${MINIWDL_VERSION}
 RUN pip3 install urllib3==1.26.16
 
-RUN curl -Ls https://github.com/chanzuckerberg/s3parcp/releases/download/v1.0.1/s3parcp_1.0.1_linux_amd64.tar.gz | tar -C /usr/bin -xz s3parcp
+RUN curl -Ls https://github.com/chanzuckerberg/s3parcp/releases/download/v1.0.1/s3parcp_1.0.1_linux_${TARGETARCH}.tar.gz | tar -C /usr/bin -xz s3parcp
 
 ADD https://raw.githubusercontent.com/chanzuckerberg/miniwdl/v${MINIWDL_VERSION}/examples/clean_download_cache.sh /usr/local/bin
 ADD scripts/init.sh /usr/local/bin
@@ -65,7 +78,7 @@ RUN pip install miniwdl-plugins/sfn_wdl
 RUN pip install miniwdl-plugins/s3parcp_download
 RUN pip install miniwdl-plugins/sns_notification
 
-RUN cd /usr/bin; curl -O https://amazon-ecr-credential-helper-releases.s3.amazonaws.com/0.4.0/linux-amd64/docker-credential-ecr-login
+RUN cd /usr/bin; curl -O https://amazon-ecr-credential-helper-releases.s3.amazonaws.com/0.4.0/linux-${TARGETARCH}/docker-credential-ecr-login
 RUN chmod +x /usr/bin/docker-credential-ecr-login
 RUN mkdir -p /root/.docker
 RUN jq -n '.credsStore="ecr-login"' > /root/.docker/config.json
