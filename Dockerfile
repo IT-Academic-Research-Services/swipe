@@ -2,12 +2,19 @@ FROM ubuntu:20.04
 ARG DEBIAN_FRONTEND=noninteractive
 # currently, there is an issue in v1.5.3 so we can't upgrade until it is resolved https://github.com/chanzuckerberg/miniwdl/issues/607
 ARG MINIWDL_VERSION=1.5.2
-# TARGETARCH is auto-populated by buildx (amd64 | arm64). Declared here so the arch-specific
-# binary downloads below (s3parcp, docker-credential-ecr-login) resolve per-platform, which is
-# what lets a single multi-arch image run on Graviton (arm64) hosts as well as x86_64. The
-# default keeps a plain `docker build` (no buildx) producing the historical amd64 image.
-# (CZID-776 / CZID-777)
-ARG TARGETARCH=amd64
+# TARGETARCH is auto-populated by BuildKit (amd64 | arm64). Redeclaring it here brings it into
+# build-stage scope so the arch-specific binary downloads below (s3parcp,
+# docker-credential-ecr-login) resolve per-platform -- which is what lets a single multi-arch
+# image run on Graviton (arm64) hosts as well as x86_64. (CZID-776 / CZID-777)
+#
+# MUST be redeclared with NO default value. Writing `ARG TARGETARCH=amd64` does not "provide a
+# fallback" -- the explicit default SHADOWS the value BuildKit injects, so every platform of a
+# multi-arch build silently downloads the amd64 binaries. The result passes every cheap check:
+# the manifest list, the child manifest platform, the config blob architecture and `uname -m`
+# all correctly say arm64, because only these two vendored binaries are wrong. It fails at
+# runtime with `exec format error`. Verified empirically: with a default, TARGETARCH expands to
+# amd64 on an arm64 build; without one, it expands to arm64.
+ARG TARGETARCH
 
 LABEL maintainer="IDseq Team idseq-tech@chanzuckerberg.com"
 
