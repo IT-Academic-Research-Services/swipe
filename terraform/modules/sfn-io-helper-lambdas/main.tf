@@ -178,14 +178,18 @@ resource "aws_cloudwatch_event_rule" "process_sfn_event" {
 }
 
 resource "aws_cloudwatch_event_rule" "report_metrics" {
-  count               = length(var.schedule_expression) > 0 ? 1 : 0
-  name                = "report_metrics-event"
+  count = length(var.schedule_expression) > 0 ? 1 : 0
+  # Env-prefixed like process_batch_event/process_sfn_event above. A bare "report_metrics-event" is
+  # account-global, so multiple swipe deployments in one account (and any legacy idseq-dev infra)
+  # collide on the same rule name -- which breaks `terraform destroy` (a stale, unmanaged target on the
+  # shared rule blocks DeleteRule). Namespacing by app_name makes each deployment own its own rule.
+  name                = "${var.app_name}-report_metrics-event"
   schedule_expression = var.schedule_expression
   tags                = var.tags
 }
 
 resource "aws_cloudwatch_event_rule" "report_spot_interruption" {
-  name = "report_spot_interruption-event"
+  name = "${var.app_name}-report_spot_interruption-event"
   tags = var.tags
 
   event_pattern = jsonencode({
@@ -211,13 +215,13 @@ resource "aws_cloudwatch_event_target" "process_sfn_event" {
 resource "aws_cloudwatch_event_target" "report_metrics" {
   count     = length(var.schedule_expression) > 0 ? 1 : 0
   rule      = aws_cloudwatch_event_rule.report_metrics[0].name
-  target_id = "report_metrics"
+  target_id = "${var.app_name}-report_metrics"
   arn       = aws_lambda_function.lambda["report_metrics"].arn
 }
 
 resource "aws_cloudwatch_event_target" "report_spot_interruption" {
   rule      = aws_cloudwatch_event_rule.report_spot_interruption.name
-  target_id = "report_spot_interruption"
+  target_id = "${var.app_name}-report_spot_interruption"
   arn       = aws_lambda_function.lambda["report_spot_interruption"].arn
 }
 
