@@ -1,0 +1,21 @@
+name: security
+
+# Adopts the shared SSOT security scan (gitleaks + trivy + tflint + opt-in checkov) from
+# IT-Academic-Research-Services/seqtoid-ci-workflows. swipe previously had NO security gate;
+# this brings it to the platform baseline. The reusable checks out THIS repo, so swipe keeps
+# its own .trivyignore baseline (accept inherited findings, hard-fail on NEW).
+on:
+  push:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      run_checkov:
+        type: boolean
+        default: false
+
+jobs:
+  security:
+    uses: IT-Academic-Research-Services/seqtoid-ci-workflows/.github/workflows/security.yml@v1
+    with:
+      run_checkov: ${{ inputs.run_checkov || false }}
