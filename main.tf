@@ -46,11 +46,11 @@ data "aws_caller_identity" "current" {}
 
 locals {
   version           = file("${path.module}/version")
-  docker_image_path = var.app_name == "swipe-test" ? "swipe" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.us-west-2.amazonaws.com/swipe"
+  docker_image_path = var.app_name == "swipe-test" ? "swipe" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.us-west-2.amazonaws.com/${var.ecr_repository_name}"
 }
 
 resource "aws_ecr_repository" "swipe" {
-  name                 = "swipe"
+  name                 = var.ecr_repository_name
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 

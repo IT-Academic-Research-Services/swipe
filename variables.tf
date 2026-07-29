@@ -206,3 +206,9 @@ variable "restricted_files" {
   description = "List of Strict (fullmatch) Regular Expressions that identify intermediate files to be deleted at the end of a Step Function"
   nullable    = true
 }
+
+variable "ecr_repository_name" {
+  type        = string
+  default     = "swipe"
+  description = "ECR repository holding the swipe engine image. Default 'swipe' (account-global, the historical behavior). Set to an env-scoped name so a swipe deployment sharing an AWS account with another does not collide on the single 'swipe' repo (the repo has force_delete=true, so co-owning it across states is unsafe)."
+}
