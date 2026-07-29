@@ -1,0 +1,14 @@
+# swipe gitleaks config: inherit gitleaks' default rules, plus a narrow allowlist for a
+# confirmed false positive.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "False positives (not secrets)"
+regexTarget = "match"
+regexes = [
+  # `http_tokens = "required"|"optional"` is the AWS launch-template IMDSv2 metadata_options
+  # attribute (terraform/modules/swipe-sfn-batch-queue/main.tf), NOT an API key. The default
+  # generic-api-key rule false-matches the attribute name "tokens".
+  '''http_tokens''',
+]
