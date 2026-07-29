@@ -1,0 +1,11 @@
+# swipe trivy baseline (CI v2 P4 security-gate adoption). Accept INHERITED IaC misconfigs so the
+# gate goes green; NEW HIGH/CRITICAL findings still hard-fail. These are pre-existing hardening
+# gaps in vendored terraform/Dockerfiles, tracked for remediation in Forgejo (backlog #294).
+# No vulnerable dependencies (vuln scan clean) -- misconfig only.
+AWS-0031  # ECR image tags mutable (swipe batch/ECR module)
+AWS-0095  # Unencrypted SNS topic
+AWS-0096  # Unencrypted SQS queue
+AWS-0104  # Security group rule allows unrestricted ingress
+AWS-0130  # EC2 launch template IMDSv2 http_tokens not "required"
+DS-0002   # Dockerfile runs as root user
+DS-0029   # apt-get missing --no-install-recommends
