@@ -109,9 +109,19 @@ def handle_failure(sfn_data, _):
     sfn_state = sfn_data["Input"]
     assert sfn_data["CurrentState"] == "HandleFailure"
     reporting.notify_failure(sfn_state=sfn_state)
-    # Clean up restricted intermediate files before propagating the failure,
-    # so cleanup runs regardless of the terminal state of the execution.
-    stage_io.delete_restricted_intermediate_files(sfn_state)
+    # Clean up restricted intermediate files before propagating the failure, so cleanup runs
+    # regardless of the terminal state of the execution. This is BEST-EFFORT: it must never
+    # mask the real stage error. On the failure path the CurrentState handed to HandleFailure
+    # does not always carry OutputPrefix, and a cleanup exception here used to replace the real
+    # TaskFailed cause with e.g. KeyError 'OutputPrefix' (SMP-1571). Log and continue so the
+    # underlying stage error below always becomes the propagated failure.
+    try:
+        stage_io.delete_restricted_intermediate_files(sfn_state)
+    except Exception:
+        logging.exception(
+            "delete_restricted_intermediate_files failed during handle_failure; continuing so "
+            "the real stage error is propagated instead of being masked by the cleanup error."
+        )
     # stage_io.delete_sample_files(sfn_state)
     error, cause = find_failure(sfn_state)
     failure_type = type(error, (Exception,), dict())

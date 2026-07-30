@@ -256,6 +256,18 @@ def delete_restricted_intermediate_files(sfn_state):
             f"[{type(restricted_files).__name__}] {restricted_files}"
         )
 
+    # On the SFN failure path the CurrentState passed to HandleFailure does not always carry
+    # OutputPrefix (it lives on the top-level execution Input). Without it we cannot resolve the
+    # workflow output directory, so there is nothing to scan -- skip instead of letting the
+    # unguarded lookup in get_output_s3_uri raise KeyError, which honors this function's documented
+    # "never raised / never impact the caller" contract (SMP-1571).
+    if not sfn_state.get("OutputPrefix"):
+        logger.warning(
+            "delete_restricted_intermediate_files: sfn_state has no OutputPrefix; cannot resolve "
+            "the output directory, skipping restricted-file cleanup for this execution."
+        )
+        return
+
     restricted_regexes = []
     for regex_str in restricted_files:
         if not isinstance(regex_str, str):
