@@ -87,7 +87,7 @@ States:
     Next: TwoSPOT
     Catch:
       - ErrorEquals: ["States.ALL"]
-        ResultPath: $.Failure
+        ResultPath: $.BatchJobError.OneReadOutput
         Next: HandleFailure
   TwoSPOT:
     Type: Task
@@ -163,7 +163,7 @@ States:
     Next: HandleSuccess
     Catch:
       - ErrorEquals: ["States.ALL"]
-        ResultPath: $.Failure
+        ResultPath: $.BatchJobError.TwoReadOutput
         Next: HandleFailure
   HandleSuccess:
     Type: Task
