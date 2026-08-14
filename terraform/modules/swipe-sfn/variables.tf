@@ -126,5 +126,23 @@ variable "step_notifications" {
 variable "restricted_files" {
   type        = list(string)
   description = "List of Strict (fullmatch) Regular Expressions that identify intermediate files to be deleted at the end of a Step Function"
-  nullable    = true
+  default     = null
+}
+
+variable "sentry_dsn" {
+  type        = string
+  description = "The Sentry DSN"
+  default     = null
+}
+
+variable "sentry_layer_version" {
+  type        = number
+  description = "The Sentry Lambda Layer ARN Version. Appended onto an ARN like: arn:aws:lambda:<aws_region>:943013980633:layer:SentryPythonServerlessSDK:<sentry_layer_version>"
+  default     = null
+}
+
+variable "sentry_traces_sample_rate" {
+  type        = string
+  description = "The Sentry Traces Sample Rate"
+  default     = null
 }

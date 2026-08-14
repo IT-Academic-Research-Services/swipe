@@ -112,6 +112,9 @@ module "sfn" {
   stage_vcpu_defaults           = var.stage_vcpu_defaults
   extra_env_vars                = var.extra_env_vars
   restricted_files              = var.restricted_files
+  sentry_dsn                    = var.sentry_dsn
+  sentry_layer_version          = var.sentry_layer_version
+  sentry_traces_sample_rate     = var.sentry_traces_sample_rate
   sqs_queues                    = var.sqs_queues
   step_notifications            = var.step_notifications
   call_cache                    = var.call_cache

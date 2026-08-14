@@ -100,3 +100,24 @@ variable "restricted_files" {
     ".*validated_\\d+\\.fastq\\.gz$",
   ]
 }
+
+variable "sentry_dsn" {
+  type        = string
+  description = "The Sentry DSN"
+  nullable    = false
+  default     = ""
+}
+
+variable "sentry_layer_version" {
+  type        = number
+  description = "The Sentry Lambda Layer ARN Version. Appended onto an ARN like: arn:aws:lambda:<aws_region>:943013980633:layer:SentryPythonServerlessSDK:<sentry_layer_version>"
+  nullable    = false
+  default     = 206
+}
+
+variable "sentry_traces_sample_rate" {
+  type        = string
+  description = "The Sentry Traces Sample Rate"
+  nullable    = false
+  default     = "1.0"
+}

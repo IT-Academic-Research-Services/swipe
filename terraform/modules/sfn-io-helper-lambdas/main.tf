@@ -127,7 +127,7 @@ resource "aws_lambda_function" "lambda" {
 
   function_name    = "${var.app_name}-${each.key}"
   runtime          = "python3.8"
-  handler          = "app.${each.key}"
+  handler          = "sentry_sdk.integrations.init_serverless_sdk.sentry_lambda_handler"
   memory_size      = 256
   timeout          = 600
   source_code_hash = data.archive_file.lambda_archive.output_sha
@@ -135,13 +135,19 @@ resource "aws_lambda_function" "lambda" {
 
   role = aws_iam_role.iam_role[each.key].arn
   tags = var.tags
+  layers = [
+    "arn:aws:lambda:${var.aws_region}:943013980633:layer:SentryPythonServerlessSDK:${var.sentry_layer_version}"
+  ]
 
   environment {
     variables = merge({
-      APP_NAME         = var.app_name
-      AWS_ENDPOINT_URL = var.aws_endpoint_url
-      RESTRICTED_FILES = jsonencode(var.restricted_files)
-      SQS_QUEUE_URLS   = join(",", var.sfn_notification_queue_urls)
+      APP_NAME                  = var.app_name
+      AWS_ENDPOINT_URL          = var.aws_endpoint_url
+      RESTRICTED_FILES          = jsonencode(var.restricted_files)
+      SENTRY_DSN                = var.sentry_dsn
+      SENTRY_INITIAL_HANDLER    = "app.${each.key}"
+      SENTRY_TRACES_SAMPLE_RATE = var.sentry_traces_sample_rate
+      SQS_QUEUE_URLS            = join(",", var.sfn_notification_queue_urls)
       }, {
       for stage, defaults in var.stage_memory_defaults : "${stage}SPOTMemoryDefault" => "${defaults.spot}"
       }, {

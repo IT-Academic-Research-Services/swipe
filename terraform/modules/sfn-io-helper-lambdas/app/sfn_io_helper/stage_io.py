@@ -262,11 +262,10 @@ def delete_restricted_intermediate_files(sfn_state):
     # unguarded lookup in get_output_s3_uri raise KeyError, which honors this function's documented
     # "never raised / never impact the caller" contract (SMP-1571).
     if not sfn_state.get("OutputPrefix"):
-        logger.warning(
+        raise ValueError(
             "delete_restricted_intermediate_files: sfn_state has no OutputPrefix; cannot resolve "
             "the output directory, skipping restricted-file cleanup for this execution."
         )
-        return
 
     restricted_regexes = []
     for regex_str in restricted_files:
@@ -321,7 +320,6 @@ def delete_restricted_intermediate_files(sfn_state):
                 logger.warning("Error deleting restricted intermediate files: %s", e)
     else:
         logger.info("No restricted intermediate files to delete")
-
 
 # def delete_sample_files(sfn_state):
 #     """

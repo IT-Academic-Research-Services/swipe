@@ -42,10 +42,12 @@ def preprocess_input(sfn_data, _):
     assert sfn_data["ExecutionId"].startswith("arn:aws:states:")
     assert len(sfn_data["ExecutionId"].split(":")) == 8
     _, _, _, aws_region, aws_account_id, _, state_machine_name, execution_name = sfn_data["ExecutionId"].split(":")
-    return stage_io.preprocess_sfn_input(sfn_state=sfn_data["Input"],
-                                         aws_region=aws_region,
-                                         aws_account_id=aws_account_id,
-                                         state_machine_name=state_machine_name)
+    return stage_io.preprocess_sfn_input(
+        sfn_state=sfn_data["Input"],
+        aws_region=aws_region,
+        aws_account_id=aws_account_id,
+        state_machine_name=state_machine_name
+    )
 
 
 def process_stage_output(sfn_data, _):
@@ -73,7 +75,20 @@ def merge_parallel_outputs(sfn_data, _):
 def handle_success(sfn_data, _):
     sfn_state = sfn_data["Input"]
     reporting.notify_success(sfn_state=sfn_state)
-    stage_io.delete_restricted_intermediate_files(sfn_state)
+    # The CurrentState passed to HandleSuccess should always carry
+    # OutputPrefix (it lives on the top-level execution Input). So this should never fail.
+    try:
+        stage_io.delete_restricted_intermediate_files(sfn_state)
+    except Exception as ex:
+        logging.exception(
+            "delete_restricted_intermediate_files failed during handle_success; continuing as "
+            "the job is not considered a failure simply because intermediate files were not deleted."
+        )
+        reporting.send_exception_to_sentry(
+            ex,
+            cause="delete_restricted_intermediate_files failed during handle_success",
+            sfn_data=sfn_data
+        )
     # stage_io.delete_sample_files(sfn_state)
     return sfn_state
 
@@ -109,6 +124,10 @@ def handle_failure(sfn_data, _):
     sfn_state = sfn_data["Input"]
     assert sfn_data["CurrentState"] == "HandleFailure"
     reporting.notify_failure(sfn_state=sfn_state)
+
+    error, cause = find_failure(sfn_state)
+    reporting.send_message_to_sentry(error, cause=cause, sfn_data=sfn_data)
+
     # Clean up restricted intermediate files before propagating the failure, so cleanup runs
     # regardless of the terminal state of the execution. This is BEST-EFFORT: it must never
     # mask the real stage error. On the failure path the CurrentState handed to HandleFailure
@@ -117,13 +136,18 @@ def handle_failure(sfn_data, _):
     # underlying stage error below always becomes the propagated failure.
     try:
         stage_io.delete_restricted_intermediate_files(sfn_state)
-    except Exception:
+    except Exception as ex:
         logging.exception(
             "delete_restricted_intermediate_files failed during handle_failure; continuing so "
             "the real stage error is propagated instead of being masked by the cleanup error."
         )
+        reporting.send_exception_to_sentry(
+            ex,
+            cause="delete_restricted_intermediate_files failed during handle_failure",
+            sfn_data=sfn_data
+        )
+
     # stage_io.delete_sample_files(sfn_state)
-    error, cause = find_failure(sfn_state)
     failure_type = type(error, (Exception,), dict())
     try:
         cause = json.loads(cause)["errorMessage"]

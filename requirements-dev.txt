@@ -3,3 +3,4 @@ flake8
 mypy
 yq
 miniwdl
+sentry-sdk

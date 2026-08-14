@@ -58,6 +58,9 @@ module "sfn_io_helper" {
   workspace_s3_prefixes       = var.workspace_s3_prefixes
   wdl_workflow_s3_prefix      = var.wdl_workflow_s3_prefix
   restricted_files            = var.restricted_files
+  sentry_dsn                  = var.sentry_dsn
+  sentry_layer_version        = var.sentry_layer_version
+  sentry_traces_sample_rate   = var.sentry_traces_sample_rate
   stage_memory_defaults       = var.stage_memory_defaults
   stage_vcpu_defaults         = var.stage_vcpu_defaults
   schedule_expression         = var.metrics_schedule
