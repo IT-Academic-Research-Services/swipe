@@ -10,19 +10,19 @@ import json
 import os
 import sys
 import unittest
+from pathlib import Path
+from unittest.mock import call, DEFAULT, patch
 
 os.environ.setdefault("APP_NAME", "swipe-test")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
+os.environ.setdefault("DEPLOYMENT_ENVIRONMENT", "test")
+os.environ.setdefault("RESTRICTED_FILES", "[]")
 
-sys.path.insert(
-    0,
-    os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "terraform", "modules", "sfn-io-helper-lambdas", "app",
-    ),
-)
-
-import app  # noqa: E402
+# Add the parent directory to the path so the tests can import the app
+APP_PATH = (Path(__file__).resolve().parents[1] / "terraform" / "modules" / "sfn-io-helper-lambdas" / "app")
+sys.path.insert(0, str(APP_PATH))
+import app
+from sfn_io_helper import stage_io
 
 
 class TestFindFailure(unittest.TestCase):
@@ -68,17 +68,23 @@ class TestFindFailure(unittest.TestCase):
 class TestHandleFailure(unittest.TestCase):
     """handle_failure must raise a typed exception carrying the real error message."""
 
-    def setUp(self):
-        self._delete = app.stage_io.delete_restricted_intermediate_files
-        app.stage_io.delete_restricted_intermediate_files = lambda *a, **kw: None
+    _key_error = KeyError("OutputPrefix")
 
-    def tearDown(self):
-        app.stage_io.delete_restricted_intermediate_files = self._delete
-
-    def test_fanout_failure_reports_root_cause_not_keyerror(self):
+    @patch.object(stage_io, "delete_restricted_intermediate_files")
+    @patch.multiple('logging', exception=DEFAULT, info=DEFAULT, warning=DEFAULT)
+    @patch.multiple("sentry_sdk", capture_exception=DEFAULT, capture_message=DEFAULT, isolation_scope=DEFAULT)
+    def test_fanout_failure_reports_root_cause_not_keyerror(
+            self, delete_restricted_intermediate_files, **multi_mocks
+    ):
         # Regression: this is the real state shape from the index-generation run that failed in
         # GenerateIndexLineages. It used to raise KeyError: 'Error' from inside handle_failure.
-        cause = json.dumps({"errorMessage": "KeyError: \"['superkingdom'] not in index\""})
+        cause = json.dumps(
+            {
+                "errorMessage": "KeyError: \"['superkingdom'] not in index\"",
+                "errorType": "KeyError",
+                "stackTrace": ["  Trace Line 1", "  Trace Line 2"]
+            }
+        )
         sfn_data = {
             "CurrentState": "HandleFailure",
             "Input": {"BatchJobError": {"Phase2Lanes": {"Error": "UncaughtError", "Cause": cause}}},
@@ -88,11 +94,88 @@ class TestHandleFailure(unittest.TestCase):
         self.assertEqual(type(ctx.exception).__name__, "UncaughtError")
         self.assertIn("superkingdom", str(ctx.exception))
 
-    def test_unknown_shape_still_raises(self):
-        sfn_data = {"CurrentState": "HandleFailure", "Input": {"Result": {}}}
+        delete_restricted_intermediate_files.assert_called_once_with(sfn_data["Input"])
+        multi_mocks['isolation_scope'].assert_called_once_with()
+        multi_mocks['isolation_scope'].return_value.__enter__.return_value.set_context.assert_called_once_with(
+            'details', {'cause': cause, 'sfn_data': sfn_data}
+        )
+        multi_mocks['capture_message'].assert_called_once_with('UncaughtError')
+        multi_mocks['capture_exception'].assert_not_called()
+        multi_mocks['exception'].assert_not_called()
+        multi_mocks['info'].assert_not_called()
+        multi_mocks['warning'].assert_not_called()
+
+    @patch.object(stage_io, "delete_restricted_intermediate_files")
+    @patch.multiple('logging', exception=DEFAULT, info=DEFAULT, warning=DEFAULT)
+    @patch.multiple("sentry_sdk", capture_exception=DEFAULT, capture_message=DEFAULT, isolation_scope=DEFAULT)
+    def test_unknown_shape_still_raises(
+            self, delete_restricted_intermediate_files, **multi_mocks
+    ):
+        cause = {"Result": {}}
+        sfn_data = {"CurrentState": "HandleFailure", "Input": cause}
         with self.assertRaises(Exception) as ctx:
             app.handle_failure(sfn_data, None)
         self.assertEqual(type(ctx.exception).__name__, "UnknownError")
+
+        delete_restricted_intermediate_files.assert_called_once_with(sfn_data["Input"])
+        multi_mocks['isolation_scope'].assert_called_once_with()
+        multi_mocks['isolation_scope'].return_value.__enter__.return_value.set_context.assert_called_once_with(
+            'details', {'cause': json.dumps(cause), 'sfn_data': sfn_data}
+        )
+        multi_mocks['capture_message'].assert_called_once_with('UnknownError')
+        multi_mocks['capture_exception'].assert_not_called()
+        multi_mocks['exception'].assert_not_called()
+        multi_mocks['info'].assert_not_called()
+        multi_mocks['warning'].assert_not_called()
+
+    @patch.object(stage_io, "delete_restricted_intermediate_files", side_effect=_key_error)
+    @patch.multiple('logging', exception=DEFAULT, info=DEFAULT, warning=DEFAULT)
+    @patch.multiple("sentry_sdk", capture_exception=DEFAULT, capture_message=DEFAULT, isolation_scope=DEFAULT)
+    def test_cleanup_failure_does_not_mask_real_error(
+            self, delete_restricted_intermediate_files, **multi_mocks
+    ):
+        # SMP-1571 regression: cleanup raises KeyError('OutputPrefix');
+        # the real cause is NonHostAlignment.
+        os.environ["RESTRICTED_FILES"] = '["intermediate_.*"]'
+        cause = json.dumps({"errorMessage": "chunk alignment failed"})
+        sfn_data = {
+            "CurrentState": "HandleFailure", "Input": {
+                "Error": "NonHostAlignment", "Cause": cause,
+            },
+        }
+        with self.assertRaises(Exception) as ctx:
+            app.handle_failure(sfn_data, None)
+
+        self.assertEqual(type(ctx.exception).__name__, "NonHostAlignment")
+        self.assertEqual(str(ctx.exception), "chunk alignment failed")
+
+        delete_restricted_intermediate_files.assert_called_once_with(sfn_data["Input"])
+        multi_mocks['isolation_scope'].assert_has_calls(
+            [
+                call(),
+                call().__enter__(),
+                call().__enter__().set_context(
+                    'details',
+                    {'cause': '{"errorMessage": "chunk alignment failed"}', 'sfn_data': sfn_data}
+                ),
+                call().__exit__(None, None, None),
+                call(),
+                call().__enter__(),
+                call().__enter__().set_context(
+                    'details',
+                    {'cause': 'delete_restricted_intermediate_files failed during handle_failure', 'sfn_data': sfn_data}
+                ),
+                call().__exit__(None, None, None),
+            ],
+            any_order=False
+        )
+        multi_mocks['capture_message'].assert_called_once_with('NonHostAlignment')
+        multi_mocks['capture_exception'].assert_called_once_with(TestHandleFailure._key_error)
+        multi_mocks['exception'].assert_called_once_with(
+            'delete_restricted_intermediate_files failed during handle_failure; continuing so the real stage error is propagated instead of being masked by the cleanup error.'
+        )
+        multi_mocks['info'].assert_not_called()
+        multi_mocks['warning'].assert_not_called()
 
 
 if __name__ == "__main__":

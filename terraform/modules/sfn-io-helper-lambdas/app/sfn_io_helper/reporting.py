@@ -1,4 +1,5 @@
 import os
+import sentry_sdk
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import DefaultDict
@@ -12,6 +13,20 @@ def notify_success(sfn_state):
 
 def notify_failure(sfn_state):
     """Placeholder for sending a message to a queue for push based result processing"""
+
+
+def send_exception_to_sentry(error: Exception, **kwargs):
+    with sentry_sdk.isolation_scope() as scope:
+        if kwargs:
+            scope.set_context("details", kwargs)
+        sentry_sdk.capture_exception(error)
+
+
+def send_message_to_sentry(message: str, **kwargs):
+    with sentry_sdk.isolation_scope() as scope:
+        if kwargs:
+            scope.set_context("details", kwargs)
+        sentry_sdk.capture_message(message)
 
 
 def emit_batch_metric_values(event, namespace=os.environ["APP_NAME"]):
