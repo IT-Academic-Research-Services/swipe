@@ -126,7 +126,7 @@ resource "aws_lambda_function" "lambda" {
   for_each = local.lambda_names
 
   function_name    = "${var.app_name}-${each.key}"
-  runtime          = "python3.8"
+  runtime          = "python3.12"
   handler          = "sentry_sdk.integrations.init_serverless_sdk.sentry_lambda_handler"
   memory_size      = 256
   timeout          = 600
