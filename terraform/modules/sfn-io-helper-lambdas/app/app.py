@@ -153,7 +153,7 @@ def handle_failure(sfn_data, _):
         cause = json.loads(cause)["errorMessage"]
     except Exception:
         pass
-    raise failure_type(cause)
+    raise failure_type(cause).with_traceback(None)
 
 
 def process_batch_event(event, _):
