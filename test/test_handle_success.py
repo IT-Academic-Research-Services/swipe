@@ -5,7 +5,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import DEFAULT, patch
+from unittest.mock import call, DEFAULT, patch
 
 os.environ.setdefault("APP_NAME", "swipe-test")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-west-2")
@@ -60,8 +60,18 @@ class TestHandleSuccess(unittest.TestCase):
         )
         multi_mocks['capture_exception'].assert_called_once_with(TestHandleSuccess._key_error)
         multi_mocks['capture_message'].assert_not_called()
-        multi_mocks['exception'].assert_called_once_with(
-            'delete_restricted_intermediate_files failed during handle_success; continuing as the job is not considered a failure simply because intermediate files were not deleted.'
+        multi_mocks['exception'].assert_has_calls(
+            [
+                call(
+                    'delete_restricted_intermediate_files failed during handle_success; continuing as the job is not considered a failure simply because intermediate files were not deleted.'
+                ),
+                call(
+                    'send_exception_to_sentry called with kwargs %s',
+                    '{"cause": "delete_restricted_intermediate_files failed during handle_success", "sfn_data": {"CurrentState": "HandleFailure", "Input": {"Results": "Success"}}}',
+                    exc_info=TestHandleSuccess._key_error
+                )
+            ],
+            any_order=False
         )
         multi_mocks['info'].assert_not_called()
         multi_mocks['warning'].assert_not_called()

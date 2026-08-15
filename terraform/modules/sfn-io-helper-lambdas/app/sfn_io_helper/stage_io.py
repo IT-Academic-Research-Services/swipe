@@ -10,6 +10,7 @@ from botocore import xform_name
 from botocore.exceptions import ClientError  # type: ignore
 
 from . import s3, s3_object, sqs
+from .reporting import send_message_to_sentry
 
 logger = logging.getLogger()
 
@@ -54,9 +55,31 @@ def get_stage_output(sfn_state, stage):
         return json.loads(s3_object(output_uri).get()["Body"].read().decode().strip() or '{}')
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchKey":
+            logger.warning('get_stage_output() no such file: %s', output_uri)
             return {}
         else:
             raise e
+
+
+def raise_state_error(stage, stage_output, sfn_state):
+    """Extract Batch job error, if any, and drop error metadata to avoid overrunning the Step Functions state size limit"""
+
+    send_message_to_sentry(f"stage failed: {stage}", sfn_state=sfn_state, **stage_output)
+
+    # Try to get the error from the Stage Output file first
+    if "error" in stage_output:
+        error_type = type(stage_output["error"], (Exception,), dict())
+        raise error_type(stage_output.get("cause", stage_output.get("message")))
+
+    # Get the error from the StepFunction state if there is no Stage Output file
+    batch_job_error = sfn_state.pop("BatchJobError", {})
+    if batch_job_error:
+        error_name, error_dict = next(iter(batch_job_error.items()))
+        if error_name.startswith(stage) and "Cause" in error_dict:
+            status_reason = error_dict["Cause"]["StatusReason"]
+            raise ValueError(status_reason)
+
+    raise ValueError(f"Unexpected error for stage {stage}")
 
 
 def read_state_from_s3(sfn_state, current_state):
@@ -64,13 +87,9 @@ def read_state_from_s3(sfn_state, current_state):
     sfn_state.setdefault("Result", {})
     stage_output = get_stage_output(sfn_state, stage)
 
-    # Extract Batch job error, if any, and drop error metadata to avoid overrunning the Step Functions state size limit
-    batch_job_error = sfn_state.pop("BatchJobError", {})
     # If the stage succeeded, don't throw an error
     if not sfn_state.get("BatchJobDetails", {}).get(stage):
-        if batch_job_error and next(iter(batch_job_error)).startswith(stage):
-            error_type = type(stage_output["error"], (Exception,), dict())
-            raise error_type(stage_output.get("cause", stage_output.get("message")))
+        raise_state_error(stage, stage_output, sfn_state)
 
     # HACK: don't include list outputs due to the SFN state size limit
     sfn_state["Result"].update({k: v for k, v in stage_output.items() if not isinstance(v, list)})
