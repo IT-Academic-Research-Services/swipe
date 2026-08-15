@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 import sentry_sdk
 from collections import defaultdict
@@ -16,6 +18,7 @@ def notify_failure(sfn_state):
 
 
 def send_exception_to_sentry(error: Exception, **kwargs):
+    logging.exception(f"send_exception_to_sentry called with kwargs %s", json.dumps(kwargs), exc_info=error)
     with sentry_sdk.isolation_scope() as scope:
         if kwargs:
             scope.set_context("details", kwargs)
@@ -23,6 +26,7 @@ def send_exception_to_sentry(error: Exception, **kwargs):
 
 
 def send_message_to_sentry(message: str, **kwargs):
+    logging.error(f"send_message_to_sentry called with message [%s] and kwargs %s", message, json.dumps(kwargs))
     with sentry_sdk.isolation_scope() as scope:
         if kwargs:
             scope.set_context("details", kwargs)

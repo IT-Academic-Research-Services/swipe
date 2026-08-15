@@ -171,8 +171,17 @@ class TestHandleFailure(unittest.TestCase):
         )
         multi_mocks['capture_message'].assert_called_once_with('NonHostAlignment')
         multi_mocks['capture_exception'].assert_called_once_with(TestHandleFailure._key_error)
-        multi_mocks['exception'].assert_called_once_with(
-            'delete_restricted_intermediate_files failed during handle_failure; continuing so the real stage error is propagated instead of being masked by the cleanup error.'
+        multi_mocks['exception'].assert_has_calls(
+            [
+                call(
+                    'delete_restricted_intermediate_files failed during handle_failure; continuing so the real stage error is propagated instead of being masked by the cleanup error.'
+                ),
+                call(
+                    'send_exception_to_sentry called with kwargs %s',
+                    '{"cause": "delete_restricted_intermediate_files failed during handle_failure", "sfn_data": {"CurrentState": "HandleFailure", "Input": {"Error": "NonHostAlignment", "Cause": "{\\"errorMessage\\": \\"chunk alignment failed\\"}"}}}',
+                    exc_info=TestHandleFailure._key_error
+                )
+            ], any_order=False
         )
         multi_mocks['info'].assert_not_called()
         multi_mocks['warning'].assert_not_called()
