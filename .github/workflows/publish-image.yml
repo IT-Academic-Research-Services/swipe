@@ -47,14 +47,14 @@ on:
   push:
     branches:
       - main
-    # Releases are cut by pushing a version tag (v1.4.9-ucsf.5, ...). The ECR tag is then
+    # Releases are cut by pushing a version tag (v1.4.9-ucsf.10, ...). The ECR tag is then
     # exactly the git tag, so "which commit is this image" is answerable from the tag alone.
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       image_tag:
-        description: "Extra ECR tag to publish this build under (e.g. v1.4.9-ucsf.6). Blank = commit-SHA tag only."
+        description: "Extra ECR tag to publish this build under (e.g. v1.4.9-ucsf.10). Blank = commit-SHA tag only."
         required: false
         default: ""
 
