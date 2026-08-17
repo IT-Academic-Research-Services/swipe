@@ -66,8 +66,9 @@ def emit_periodic_metrics(
                for k, v in jobs_by_status.items()]
     if sum(jobs_by_status.values()) > 0:
         metrics.append(dict(MetricName="BatchPercentFailedJobs", Unit="Percent",
-                            Value=100 * jobs_by_status["FAILED"] / sum(jobs_by_status.values())))
-    cloudwatch.put_metric_data(Namespace=namespace, MetricData=metrics)
+                            Value=int(100 * jobs_by_status["FAILED"] / sum(jobs_by_status.values()))))
+    if metrics:
+        cloudwatch.put_metric_data(Namespace=namespace, MetricData=metrics)
 
     executions_by_status: DefaultDict[str, int] = defaultdict(int)
     for state_machine in paginate(stepfunctions.get_paginator("list_state_machines")):
@@ -82,5 +83,6 @@ def emit_periodic_metrics(
                for k, v in executions_by_status.items()]
     if sum(executions_by_status.values()) > 0:
         metrics.append(dict(MetricName="SFNPercentFailedExecutions", Unit="Percent",
-                            Value=100 * executions_by_status["FAILED"] / sum(executions_by_status.values())))
-    cloudwatch.put_metric_data(Namespace=namespace, MetricData=metrics)
+                            Value=int(100 * executions_by_status["FAILED"] / sum(executions_by_status.values()))))
+    if metrics:
+        cloudwatch.put_metric_data(Namespace=namespace, MetricData=metrics)
