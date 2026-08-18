@@ -165,6 +165,16 @@ resource "aws_batch_compute_environment" "swipe_main" {
     create_before_destroy = true
     ignore_changes = [
       compute_resources[0].desired_vcpus,
+      # AMI id. `image_id` above resolves the AWS-published "latest" ECS-optimized AMI (via
+      # data.aws_ssm_parameter.swipe_batch_ami) unless the caller pins var.ami_id. Tracking it
+      # means every AWS AMI republish force-replaces this CE on the next plan -- the single
+      # largest recurring source of Batch churn for every consumer of this module. Freeze it:
+      # the id is chosen when the CE is created (or replaced) and never diffs afterward. To roll
+      # forward deliberately, `terraform apply -replace` this resource (or taint it); the
+      # recreation re-reads image_id (var.ami_id if set, else the current latest). This makes the
+      # AMI a create/replace-time decision instead of an ambient one -- callers no longer need
+      # external AMI-pinning machinery to get a stable plan.
+      compute_resources[0].image_id,
     ]
   }
 }
