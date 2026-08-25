@@ -37,20 +37,22 @@ module "batch_queue" {
   use_spot                 = var.use_spot
   spot_max_vcpus           = var.spot_max_vcpus
   on_demand_max_vcpus      = var.on_demand_max_vcpus
-  tags                     = var.tags
-  imdsv2_policy            = var.imdsv2_policy
-  user_data_parts          = var.user_data_parts
+
+  on_demand_allocation_strategy = var.on_demand_allocation_strategy
+  tags                          = var.tags
+  imdsv2_policy                 = var.imdsv2_policy
+  user_data_parts               = var.user_data_parts
 }
 
 data "aws_caller_identity" "current" {}
 
 locals {
   version           = file("${path.module}/version")
-  docker_image_path = var.app_name == "swipe-test" ? "swipe" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.us-west-2.amazonaws.com/swipe"
+  docker_image_path = var.app_name == "swipe-test" ? "swipe" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.us-west-2.amazonaws.com/${var.ecr_repository_name}"
 }
 
 resource "aws_ecr_repository" "swipe" {
-  name                 = "swipe"
+  name                 = var.ecr_repository_name
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 

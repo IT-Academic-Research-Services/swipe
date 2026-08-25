@@ -56,6 +56,12 @@ variable "on_demand_max_vcpus" {
   type        = number
 }
 
+variable "on_demand_allocation_strategy" {
+  description = "Allocation strategy for the on demand (EC2) main compute environment. BEST_FIT_PROGRESSIVE lets Batch fall through to additional instance types instead of stalling on one, which matters with a diverse instanceTypes list. Defaults to BEST_FIT so existing deployments are unchanged. The spot CE always uses SPOT_CAPACITY_OPTIMIZED."
+  type        = string
+  default     = "BEST_FIT"
+}
+
 variable "tags" {
   description = "Tags to apply to managed assets"
   type        = map(string)

@@ -78,6 +78,12 @@ variable "on_demand_max_vcpus" {
   default     = 16
 }
 
+variable "on_demand_allocation_strategy" {
+  description = "Allocation strategy for the on demand (EC2) main compute environment. Set BEST_FIT_PROGRESSIVE to let Batch try multiple instance types instead of stalling on one. Defaults to BEST_FIT so existing deployments are unchanged."
+  type        = string
+  default     = "BEST_FIT"
+}
+
 variable "sfn_template_files" {
   description = "A map of names to YAML AWS Step Function State Machine Definition Templates. Useful for multi-stage workflows or custom compute environments, see documentation on multi-stage workflows for more information"
   type = map(object({
@@ -223,4 +229,10 @@ variable "sentry_traces_sample_rate" {
   type        = string
   description = "The Sentry Traces Sample Rate"
   default     = null
+}
+
+variable "ecr_repository_name" {
+  type        = string
+  default     = "swipe"
+  description = "ECR repository holding the swipe engine image. Default 'swipe' (account-global, the historical behavior). Set to an env-scoped name so a swipe deployment sharing an AWS account with another does not collide on the single 'swipe' repo (the repo has force_delete=true, so co-owning it across states is unsafe)."
 }
