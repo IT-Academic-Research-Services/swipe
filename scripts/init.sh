@@ -11,11 +11,30 @@ else
   export aws="aws"
 fi
 
+# Marker file written whenever we detect that this chunk's host is being reclaimed (spot
+# instance-action seen on IMDS, or a SIGTERM delivered to this entrypoint). handle_error consults
+# it to re-surface an otherwise-swallowed spot interruption as a retryable failure. See the long
+# comment in handle_error for why this is necessary.
+SPOT_INTERRUPTION_MARKER=/tmp/swipe_spot_interruption
+
+# If the ECS/Batch agent (or a spot reclamation) sends SIGTERM to this entrypoint, record it so the
+# EXIT trap can classify the resulting miniwdl failure as a retryable host reclamation rather than a
+# genuine tool error. bash defers this trap until the foreground `miniwdl run` returns, which is
+# exactly when we want to inspect the marker.
+handle_sigterm() {
+  echo WARNING: entrypoint received SIGTERM, treating as spot/host reclamation >> /dev/stderr
+  touch "$SPOT_INTERRUPTION_MARKER"
+}
+trap handle_sigterm SIGTERM
+
 check_for_termination() {
   count=0
   while true; do
     if TOKEN=`curl -m 10 -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600"` && curl -H "X-aws-ec2-metadata-token: $TOKEN" -sf http://169.254.169.254/latest/meta-data/spot/instance-action; then
       echo WARNING: THIS SPOT INSTANCE HAS BEEN SCHEDULED FOR TERMINATION >> /dev/stderr
+      # Record the reclamation so handle_error can re-surface miniwdl's swallowed SIGTERM as a
+      # retryable failure even though miniwdl exits with a clean, non-retryable-looking code.
+      touch "$SPOT_INTERRUPTION_MARKER"
     fi
     # Print an update every 5 mins
     if [ $((count++ % 60)) -eq 0 ]; then
@@ -72,6 +91,34 @@ $aws s3 cp "$WDL_INPUT_URI" wdl_input.json
 handle_error() {
   # Add enhanced logging for our most common termination types
   EXIT_CODE=$?
+
+  # Spot-reclaim re-surfacing (root cause of the "alignment chunk fails, passes on manual re-run"
+  # class of sample failures):
+  #
+  # When AWS reclaims a spot host, the ECS/Batch agent SIGTERMs the containers on it. miniwdl traps
+  # that signal, aborts its running docker task (logs `error: "Interrupted"`, docker task exit
+  # code = -1) and exits CLEANLY with code 2. To AWS Batch that is indistinguishable from a genuine
+  # tool failure -- statusReason "Essential container in task exited", container exitCode 2. Because
+  # it is not the string "Host EC2 (instance i-*) terminated." and not exit 143, NONE of the
+  # host-reclamation retry rules fire: not the job-def retryStrategy (Host EC2*), not the SFN
+  # RunDetectError choice, and not the fan-out coordinator's _classify_terminal_failure (which
+  # retries None/143/host-terminated but treats a bare exit 2 as a real, non-retryable error). The
+  # chunk dies after one attempt and the whole sample fails, even though a plain re-run succeeds.
+  #
+  # Fix: if our detector tripped (IMDS spot instance-action seen, or we caught SIGTERM directly) and
+  # miniwdl exited with one of the CLEAN-looking codes it produces when it swallows the SIGTERM
+  # (1 or 2), re-surface the failure as 143 (SIGTERM) so every one of those retry rules classifies it
+  # as a retryable host reclamation. We deliberately do NOT touch the memory-kill signals (137 SIGKILL
+  # / 139 segfault / 134 abort) or an already-143 exit: those already carry correct, retryable
+  # meanings downstream (137/139/134 -> escalate memory, 143 -> retry on-demand), so leaving them
+  # alone avoids mislabeling a genuine OOM as a spot reclamation. Genuine tool errors -- where no
+  # interruption was detected -- keep their original exit code and stay non-retryable, preserving
+  # normal failure semantics.
+  if [[ -f "$SPOT_INTERRUPTION_MARKER" && ( $EXIT_CODE == 1 || $EXIT_CODE == 2 ) ]]; then
+    echo "ERROR: chunk interrupted by spot/host reclamation (original exit $EXIT_CODE); re-surfacing as SIGTERM/143 so retry rules fire" >> /dev/stderr
+    EXIT_CODE=143
+  fi
+
   if [[ $EXIT_CODE == 137 ]]; then
     echo ERROR: container terminated with SIGKILL, this is most likely because memory usage was above container limits >> /dev/stderr
     exit $EXIT_CODE
@@ -95,6 +142,9 @@ handle_error() {
     fi;
     $aws s3 cp $OF "$WDL_OUTPUT_URI";
   fi
+  # Exit deterministically with the (possibly re-surfaced) code so a spot-reclaim re-map to 143 is
+  # actually what Batch records as the attempt's container exit code.
+  exit $EXIT_CODE
 }
 
 trap handle_error EXIT

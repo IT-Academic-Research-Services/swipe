@@ -68,6 +68,19 @@ States:
       - Variable: "$.BatchJobError.RunSPOT.Cause.StatusReason"
         StringMatches: "Host EC2 (instance i-*) terminated."
         Next: RunEC2
+      # Masked spot reclamation. When a spot host is reclaimed, miniwdl traps the SIGTERM and the
+      # chunk exits non-zero instead of Batch recording a "Host EC2 ... terminated." StatusReason, so
+      # the string match above misses it. The swipe entrypoint (scripts/init.sh) re-surfaces that
+      # swallowed interrupt as container exit code 143, so route a 143 exit to the on-demand (EC2)
+      # queue too -- an on-demand host cannot be spot-reclaimed, so the retry actually makes progress
+      # instead of failing the whole sample. Bounded: RunEC2 runs once; a genuine error there still
+      # falls through to RunReadOutput and fails.
+      - And:
+          - Variable: "$.BatchJobError.RunSPOT.Cause.Container.ExitCode"
+            IsPresent: true
+          - Variable: "$.BatchJobError.RunSPOT.Cause.Container.ExitCode"
+            NumericEquals: 143
+        Next: RunEC2
     Default: RunReadOutput
   RunEC2:
     Type: Task

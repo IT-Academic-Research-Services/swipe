@@ -13,6 +13,23 @@ from WDL.runtime import config
 s3 = boto3.resource("s3", endpoint_url=os.getenv("AWS_ENDPOINT_URL"))
 
 
+def _is_interruption(exn: BaseException) -> bool:
+    """Return True if this task exception is a spot/host reclamation rather than a genuine failure.
+
+    miniwdl raises WDL.runtime.error.Terminated when it catches a termination signal, and reports the
+    aborted docker task with the string "Interrupted". We match on the exception class name and
+    message text (rather than importing the class) so this keeps working across miniwdl versions.
+    """
+    names = {type(exn).__name__}
+    cause = getattr(exn, "__cause__", None)
+    if cause is not None:
+        names.add(type(cause).__name__)
+    if "Terminated" in names:
+        return True
+    text = (str(exn) + " " + str(cause or "")).lower()
+    return "interrupted" in text
+
+
 def s3_object(uri):
     assert uri.startswith("s3://")
     bucket, key = uri.split("/", 3)[2:]
@@ -93,6 +110,17 @@ def task(cfg, logger, run_id, run_dir, task, **recv):
             # read the error message to determine status user_errored or pipeline_errored
             status = dict(status="pipeline_errored")
             msg = str(exn)
+            # Spot/host reclamation: miniwdl traps the SIGTERM sent when a spot host is reclaimed,
+            # aborts the running docker task ("error: Interrupted") and raises Terminated here. That
+            # is NOT a pipeline error -- the chunk is expected to be retried on a fresh host by the
+            # Batch retryStrategy / SFN RunDetectError / fan-out coordinator. Record it as a distinct
+            # "interrupted" status (rather than "pipeline_errored") so status JSON, dashboards and the
+            # spot-interruption metric stay honest and a retried chunk that later succeeds is not
+            # left looking like a failure. The exception is still re-raised below so the container
+            # exits non-zero and the retry machinery engages (see swipe scripts/init.sh, which
+            # re-surfaces the swallowed interrupt as exit 143).
+            if _is_interruption(exn):
+                status = dict(status="interrupted")
             if last_stderr_json and "wdl_error_message" in last_stderr_json:
                 msg = last_stderr_json.get(
                     "cause", last_stderr_json["wdl_error_message"]

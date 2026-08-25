@@ -60,9 +60,9 @@ variable "batch_job_timeout_seconds" {
 }
 
 variable "batch_job_retry_attempts" {
-  description = "Number of times Batch will try to run the job. If using Step Functions, this is best left at 1 and retries configured in the SFN."
+  description = "Number of Batch attempts per job. Must be >= 2 for the retry_strategy evaluate_on_exit rules (Host EC2* / exit 143 / exit 1 / exit 2) to actually retry a spot-reclaimed or masked-interrupt attempt on a fresh host; defaults to 3. Genuine tool errors that match a RETRY rule are bounded by this count before failing. SFN-driven consumers may still layer their own stage retries on top."
   type        = number
-  default     = 1
+  default     = 3
 }
 
 variable "docker_network" {
