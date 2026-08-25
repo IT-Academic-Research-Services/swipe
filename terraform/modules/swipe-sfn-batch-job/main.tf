@@ -120,6 +120,40 @@ resource "aws_batch_job_definition" "swipe_main" {
 
   retry_strategy {
     attempts = var.batch_job_retry_attempts
+
+    # evaluate_on_exit rules are evaluated top-to-bottom; the first match wins. We RETRY the
+    # host-reclamation and masked-spot-interruption signatures and EXIT (fail fast) on everything
+    # else. Ordering matters: keep the specific RETRY rules ABOVE the catch-all EXIT.
+    #
+    # - Host EC2*         : AWS reclaimed the spot host and Batch recorded it as a host termination.
+    # - exit code 143     : SIGTERM. A spot reclamation that the swipe entrypoint re-surfaced from
+    #                       miniwdl's swallowed exit-2 (see scripts/init.sh), or a raw agent SIGTERM.
+    # - exit code 1 / 2   : transient masked failures we have seen from spot reclamation -- the
+    #                       s3parcp gather exiting 1 and miniwdl's interrupted docker task exiting 2.
+    #                       Retrying these lands the attempt on a fresh host. Tradeoff: a genuinely
+    #                       deterministic bad-input chunk now retries up to `attempts` times before it
+    #                       finally fails -- acceptable, because it is bounded and cheap relative to a
+    #                       whole multi-hundred-sample batch failing on a single reclaimed chunk.
+    evaluate_on_exit {
+      on_status_reason = "Host EC2*"
+      action           = "RETRY"
+    }
+    evaluate_on_exit {
+      on_exit_code = "143"
+      action       = "RETRY"
+    }
+    evaluate_on_exit {
+      on_exit_code = "1"
+      action       = "RETRY"
+    }
+    evaluate_on_exit {
+      on_exit_code = "2"
+      action       = "RETRY"
+    }
+    evaluate_on_exit {
+      on_reason = "*"
+      action    = "EXIT"
+    }
   }
 
   timeout {
