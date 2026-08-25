@@ -78,6 +78,12 @@ variable "on_demand_max_vcpus" {
   default     = 16
 }
 
+variable "on_demand_allocation_strategy" {
+  description = "Allocation strategy for the on demand (EC2) main compute environment. Set BEST_FIT_PROGRESSIVE to let Batch try multiple instance types instead of stalling on one. Defaults to BEST_FIT so existing deployments are unchanged."
+  type        = string
+  default     = "BEST_FIT"
+}
+
 variable "sfn_template_files" {
   description = "A map of names to YAML AWS Step Function State Machine Definition Templates. Useful for multi-stage workflows or custom compute environments, see documentation on multi-stage workflows for more information"
   type = map(object({

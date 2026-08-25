@@ -37,9 +37,11 @@ module "batch_queue" {
   use_spot                 = var.use_spot
   spot_max_vcpus           = var.spot_max_vcpus
   on_demand_max_vcpus      = var.on_demand_max_vcpus
-  tags                     = var.tags
-  imdsv2_policy            = var.imdsv2_policy
-  user_data_parts          = var.user_data_parts
+
+  on_demand_allocation_strategy = var.on_demand_allocation_strategy
+  tags                          = var.tags
+  imdsv2_policy                 = var.imdsv2_policy
+  user_data_parts               = var.user_data_parts
 }
 
 data "aws_caller_identity" "current" {}
