@@ -1,9 +1,15 @@
 name: security
 
-# Adopts the shared SSOT security scan (gitleaks + trivy + tflint + opt-in checkov) from
-# IT-Academic-Research-Services/seqtoid-ci-workflows. swipe previously had NO security gate;
-# this brings it to the platform baseline. The reusable checks out THIS repo, so swipe keeps
-# its own .trivyignore baseline (accept inherited findings, hard-fail on NEW).
+# Self-contained security-scanning gate for swipe. This inlines the scan jobs directly instead of
+# calling a shared reusable workflow, so the gate keeps working while swipe stays a public repo. It
+# scans ONLY this repo's own code. Scanners and their gating:
+#   - gitleaks : secret scanning over git history (hard-fail on any leak). Honors .gitleaks.toml.
+#   - trivy    : vuln + IaC misconfig (hard-fail on HIGH/CRITICAL; exceptions in .trivyignore).
+#                Secret scanning is gitleaks' job here, not trivy's (avoids redundancy + a slow hang).
+#   - tflint   : Terraform lint (hard-fail on errors; warnings reported).
+#   - checkov  : deep IaC policy pass, OPT-IN via the run_checkov dispatch input. Report-only.
+# The trivy .trivyignore baseline accepts inherited findings and hard-fails on NEW HIGH/CRITICAL.
+
 on:
   push:
   pull_request:
@@ -11,11 +17,86 @@ on:
   workflow_dispatch:
     inputs:
       run_checkov:
+        description: "Also run the full Checkov policy pass (report-only)"
         type: boolean
         default: false
 
+permissions:
+  contents: read
+
 jobs:
-  security:
-    uses: IT-Academic-Research-Services/seqtoid-ci-workflows/.github/workflows/security.yml@v1
-    with:
-      run_checkov: ${{ inputs.run_checkov || false }}
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          VER=8.30.1
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz" | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+      - name: Scan git history for secrets
+        run: gitleaks git . --redact --no-banner --exit-code 1
+
+  trivy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12 # fail fast instead of hanging on a slow/rate-limited DB pull
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Log in to ghcr.io
+        # Authenticated pulls of trivy's vuln-DB + policy bundles avoid the anonymous ghcr.io rate
+        # limit, which otherwise stalls the DB download and hangs the job. Uses this repo's own token.
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # scanners = vuln,misconfig only -- NOT secret. The gitleaks job owns secret scanning
+      # (history-aware, hard-fail). Trivy's secret scanner is redundant with it and is slow on
+      # string-heavy files, which can hang the job.
+      - name: Trivy (vuln + misconfig)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: 1
+
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a # v6
+        with:
+          # Pinned (not `latest`) so the lint gate is reproducible and can't drift.
+          tflint_version: v0.63.1
+      # setup-tflint installs the binary but NOT the ruleset plugins -- `tflint --init` is a required
+      # separate step. Without it a recursive run silently skips plugin rules or errors outright.
+      # GITHUB_TOKEN avoids the plugin-download rate limit.
+      - name: Init TFLint plugins
+        run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - run: tflint --recursive --minimum-failure-severity=error --format compact
+
+  checkov:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_checkov }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: bridgecrewio/checkov-action@a7683e7b72a04503521247973281ec8142e1ac1f # v12
+        with:
+          directory: .
+          # Pin the checkov engine so the run is reproducible (the action otherwise pip-installs the
+          # LATEST checkov, which finds a different finding set run to run). Bump deliberately.
+          checkov_version: "3.3.6"
+          framework: terraform
+          soft_fail: true
+          output_format: cli
