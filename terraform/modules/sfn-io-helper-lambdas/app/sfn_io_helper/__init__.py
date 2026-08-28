@@ -1,12 +1,15 @@
 import os
 
 import boto3
+from botocore.config import Config
 
-s3 = boto3.resource("s3", endpoint_url=os.getenv("AWS_ENDPOINT_URL"))
-batch = boto3.client("batch", endpoint_url=os.getenv("AWS_ENDPOINT_URL"))
-stepfunctions = boto3.client("stepfunctions", endpoint_url=os.getenv("AWS_ENDPOINT_URL"))
-cloudwatch = boto3.client("cloudwatch", endpoint_url=os.getenv("AWS_ENDPOINT_URL"))
-sqs = boto3.client("sqs", endpoint_url=os.getenv("AWS_ENDPOINT_URL"))
+boto_config = Config(retries={'max_attempts': 10, 'mode': 'adaptive'})  # type: ignore
+
+s3 = boto3.resource("s3", endpoint_url=os.getenv("AWS_ENDPOINT_URL"), config=boto_config)
+batch = boto3.client("batch", endpoint_url=os.getenv("AWS_ENDPOINT_URL"), config=boto_config)
+stepfunctions = boto3.client("stepfunctions", endpoint_url=os.getenv("AWS_ENDPOINT_URL"), config=boto_config)
+cloudwatch = boto3.client("cloudwatch", endpoint_url=os.getenv("AWS_ENDPOINT_URL"), config=boto_config)
+sqs = boto3.client("sqs", endpoint_url=os.getenv("AWS_ENDPOINT_URL"), config=boto_config)
 
 
 def s3_object(uri):

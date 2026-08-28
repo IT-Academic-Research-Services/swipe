@@ -64,7 +64,7 @@ def get_stage_output(sfn_state, stage):
 def raise_state_error(stage, stage_output, sfn_state):
     """Extract Batch job error, if any, and drop error metadata to avoid overrunning the Step Functions state size limit"""
 
-    send_message_to_sentry(f"stage failed: {stage}", sfn_state=sfn_state, **stage_output)
+    send_message_to_sentry(f"raise_state_error: stage failed [{stage}]", sfn_state=sfn_state, **stage_output)
 
     # Try to get the error from the Stage Output file first
     if "error" in stage_output:

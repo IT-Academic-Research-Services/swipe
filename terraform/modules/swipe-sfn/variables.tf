@@ -132,6 +132,7 @@ variable "restricted_files" {
 variable "sentry_dsn" {
   type        = string
   description = "The Sentry DSN"
+  sensitive = true
   default     = null
 }
 
