@@ -56,7 +56,7 @@ variable "extra_env_vars" {
 }
 
 variable "sqs_queues" {
-  description = "A dictionary of sqs queue names to a map of options: visibility_timeout_seconds (default: '120'), dead_letter ('true'/'false' default: 'true')"
+  description = "A dictionary of sqs queue names to a map of options: visibility_timeout_seconds (default: '120'), dead_letter ('true'/'false' default: 'true'), filter_policy (optional SNS filter policy JSON string; default: none), filter_policy_scope ('MessageBody' or 'MessageAttributes'; default: 'MessageBody' when a filter_policy is set)"
   type        = map(map(string))
 }
 
