@@ -68,6 +68,13 @@ resource "aws_sns_topic_subscription" "sfn_notifications_sqs_target" {
   protocol             = "sqs"
   endpoint             = aws_sqs_queue.sfn_notifications_queue[each.key].arn
   raw_message_delivery = true
+
+  # Optional SNS filter policy (a JSON string), e.g. to keep a queue from receiving events for
+  # executions started by another deployment that shares these state machines. Unset = no filter,
+  # identical to before. Scope defaults to MessageBody because the event is delivered raw and the
+  # fields worth filtering on (detail.name, detail.status) live in the body, not in attributes.
+  filter_policy       = lookup(each.value, "filter_policy", null)
+  filter_policy_scope = lookup(each.value, "filter_policy", null) == null ? null : lookup(each.value, "filter_policy_scope", "MessageBody")
 }
 
 resource "aws_sqs_queue" "sfn_notifications_queue" {
